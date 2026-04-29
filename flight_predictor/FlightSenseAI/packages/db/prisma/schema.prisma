@@ -1,0 +1,168 @@
+// Prisma schema for FlightSense AI
+// Based on FlightSense_AI_PRD.md Appendix A
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============= Core Models =============
+
+model Flight {
+  id                    String    @id @default(cuid())
+  flightId              String    @unique @map("flight_id") // e.g., AA1234
+  departureAirport      String    @map("departure_airport") @db.Char(3)
+  arrivalAirport        String    @map("arrival_airport") @db.Char(3)
+  scheduledDeparture    DateTime  @map("scheduled_departure")
+  actualStatus          String    @default("scheduled") @map("actual_status")
+  disruptionProbability Decimal?  @map("disruption_probability") @db.Decimal(5, 2)
+  predictionConfidence  Decimal?  @map("prediction_confidence") @db.Decimal(5, 2)
+  lastUpdated           DateTime  @default(now()) @updatedAt @map("last_updated")
+
+  passengers   Passenger[]
+  outreachLogs OutreachLog[]
+
+  @@index([scheduledDeparture])
+  @@index([disruptionProbability])
+  @@map("flights")
+}
+
+model Passenger {
+  id                 String    @id @default(cuid())
+  bookingReference   String    @map("booking_reference") @db.VarChar(6)
+  flightId           String    @map("flight_id")
+  name               String    @db.VarChar(100)
+  phone              String?   @db.VarChar(20)
+  email              String?   @db.VarChar(100)
+  loyaltyTier        String?   @map("loyalty_tier") @db.VarChar(20) // Executive Platinum, Gold, etc.
+  languagePreference String    @default("en") @map("language_preference") @db.Char(2)
+  outreachStatus     String    @default("pending") @map("outreach_status")
+  outreachTimestamp  DateTime? @map("outreach_timestamp")
+  resolutionType     String?   @map("resolution_type") @db.VarChar(50)
+
+  flight       Flight        @relation(fields: [flightId], references: [flightId])
+  outreachLogs OutreachLog[]
+
+  @@index([flightId])
+  @@index([outreachStatus])
+  @@map("passengers")
+}
+
+model PredictionSignal {
+  id               String   @id @default(cuid())
+  source           String   @db.VarChar(50) // polymarket, weather_api, social_sentiment, etc.
+  marketId         String?  @map("market_id") @db.VarChar(100)
+  probability      Decimal  @db.Decimal(5, 4)
+  affectedAirports String[] @map("affected_airports")
+  affectedRoutes   String[] @map("affected_routes")
+  rawData          Json?    @map("raw_data")
+  timestamp        DateTime @default(now())
+
+  @@map("prediction_signals")
+}
+
+model OutreachLog {
+  id            String   @id @default(cuid())
+  passengerId   String   @map("passenger_id")
+  flightId      String   @map("flight_id")
+  callTimestamp DateTime @map("call_timestamp")
+  callDuration  Int?     @map("call_duration") // seconds
+  outcome       String   @db.VarChar(50) // rebooked, voucher_issued, declined, no_answer, etc.
+  newFlightId   String?  @map("new_flight_id") @db.VarChar(10)
+  voucherIssued Boolean  @default(false) @map("voucher_issued")
+  transcriptUrl String?  @map("transcript_url")
+
+  passenger Passenger @relation(fields: [passengerId], references: [id])
+  flight    Flight    @relation(fields: [flightId], references: [flightId])
+
+  @@map("outreach_logs")
+}
+
+// ============= User / Auth (from Flock) =============
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+
+  accounts    Account[]
+  sessions    Session[]
+  itineraries Itinerary[]
+  userFlights UserFlight[]
+
+  @@map("users")
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String  @map("user_id")
+  type                     String
+  provider                 String
+  providerAccountId        String  @map("provider_account_id")
+  refresh_token            String? @db.Text
+  access_token             String? @db.Text
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String? @db.Text
+  session_state            String?
+  refresh_token_expires_in Int?    @map("refresh_token_expires_in")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============= Flock-specific Models =============
+
+model UserFlight {
+  userId        String   @map("user_id")
+  flightId      String   @map("flight_id")
+  date          String?
+  isCanceled    Boolean? @default(false) @map("is_canceled")
+  voucherAmount Int?     @map("voucher_amount")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, flightId])
+  @@map("user_flights")
+}
+
+model Itinerary {
+  id            Int      @id @default(autoincrement())
+  userId        String?  @map("user_id")
+  name          String?  @db.VarChar(50)
+  itineraryData Json     @map("itinerary_data")
+  dateCreated   DateTime @default(now()) @map("date_created")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("itineraries")
+}
