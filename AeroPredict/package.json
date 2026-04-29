@@ -1,0 +1,22 @@
+{
+    "name": "flightsense-ai",
+    "version": "0.1.0",
+    "private": true,
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "dev": "turbo run dev",
+        "build": "turbo run build",
+        "lint": "turbo run lint",
+        "test": "turbo run test"
+    },
+    "devDependencies": {
+        "turbo": "^2.4.0"
+    },
+    "dependencies": {
+        "react": "^19.2.3",
+        "react-dom": "^19.2.3"
+    }
+}
